@@ -305,6 +305,18 @@ func (mx *Mux) Mount(pattern string, handler http.Handler) {
 
 	// Assign sub-Router's with the parent not found & method not allowed handler if not specified.
 	subr, ok := handler.(*Mux)
+
+	// Provide runtime safety for ensuring a router (or an inline mux derived
+	// from it via With()/Group(), which shares the same underlying tree) isn't
+	// mounted onto itself. Without this check, a request that doesn't match
+	// any defined route recurses through the same mount forever: routeHTTP
+	// falls through to the mount's wildcard, mountHandler hands the request
+	// back to a handler backed by the very same tree, and RoutePath never
+	// changes, so the routing never terminates. See issue #843.
+	if ok && subr.tree == mx.tree {
+		panic(fmt.Sprintf("chi: attempting to Mount() a router onto itself on '%s'", pattern))
+	}
+
 	if ok && subr.notFoundHandler == nil && mx.notFoundHandler != nil {
 		subr.NotFound(mx.notFoundHandler)
 	}
